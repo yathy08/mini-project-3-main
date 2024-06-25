@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -92,7 +93,6 @@ func TestCreate(t *testing.T) {
 
 	newUser := domain.User{Email: "newuser@example.com"}
 
-	// Mock API response for creating a user
 	gock.New("https://reqres.in").
 		Post("/api/users").
 		Reply(201).
@@ -166,7 +166,6 @@ func TestDelete(t *testing.T) {
 
 	req, _ := http.NewRequest("DELETE", "/users/1", nil)
 
-	
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
 
@@ -177,5 +176,170 @@ func TestDelete(t *testing.T) {
 	expected := `{"message":"User deleted successfully"}`
 	if rr.Body.String() != expected {
 		t.Fatalf("expected %v; got %v", expected, rr.Body.String())
+	}
+}
+
+func TestCreateInvalidJSON(t *testing.T) {
+	router := gin.Default()
+	router.POST("/users", handler.Create)
+
+	invalidJSON := []byte(`{"email": "newuser@example.com"`) // Missing closing brace
+	req, _ := http.NewRequest("POST", "/users", bytes.NewBuffer(invalidJSON))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected %v; got %v", http.StatusBadRequest, rr.Code)
+	}
+	var response map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if response["error"] != "Invalid input data" {
+		t.Fatalf("expected error 'Invalid input data'; got %v", response["error"])
+	}
+}
+
+func TestCreateAPIFailure(t *testing.T) {
+	defer gock.Off()
+
+	newUser := domain.User{Email: "newuser@example.com"}
+
+	gock.New("https://reqres.in").
+		Post("/api/users").
+		Reply(500).
+		JSON(map[string]string{"error": "Internal Server Error"})
+
+	router := gin.Default()
+	router.POST("/users", handler.Create)
+
+	body, _ := json.Marshal(newUser)
+	req, _ := http.NewRequest("POST", "/users", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected %v; got %v", http.StatusInternalServerError, rr.Code)
+	}
+	var response map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if response["error"] != "Failed to create user" {
+		t.Fatalf("expected error 'Failed to create user'; got %v", response["error"])
+	}
+}
+
+func TestCreateInvalidUnmarshaling(t *testing.T) {
+	defer gock.Off()
+
+	newUser := domain.User{Email: "newuser@example.com"}
+
+	gock.New("https://reqres.in").
+		Post("/api/users").
+		Reply(201).
+		BodyString("invalid JSON response")
+
+	router := gin.Default()
+	router.POST("/users", handler.Create)
+
+	body, _ := json.Marshal(newUser)
+	req, _ := http.NewRequest("POST", "/users", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected %v; got %v", http.StatusInternalServerError, rr.Code)
+	}
+	var response map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if response["error"] != "Failed to unmarshal response" {
+		t.Fatalf("expected error 'Failed to unmarshal response'; got %v", response["error"])
+	}
+}
+
+func TestUpdateAPINetworkFailure(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://reqres.in").
+		Put("/api/users/1").
+		ReplyError(fmt.Errorf("network error"))
+
+	router := gin.Default()
+	router.PUT("/users/:id", handler.Update)
+
+	updatedUser := domain.User{Email: "updateduser@example.com"}
+	body, _ := json.Marshal(updatedUser)
+	req, _ := http.NewRequest("PUT", "/users/1", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected %v; got %v", http.StatusInternalServerError, rr.Code)
+	}
+	var response map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if response["error"] != "Failed to update user" {
+		t.Fatalf("expected error 'Failed to update user'; got %v", response["error"])
+	}
+}
+
+func TestUpdateInvalidInputData(t *testing.T) {
+	router := gin.Default()
+	router.PUT("/users/:id", handler.Update)
+
+	invalidJSON := []byte(`{"email": "updateduser@example.com"`) // Missing closing brace
+	req, _ := http.NewRequest("PUT", "/users/1", bytes.NewBuffer(invalidJSON))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected %v; got %v", http.StatusBadRequest, rr.Code)
+	}
+	var response map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if response["error"] != "Invalid input" {
+		t.Fatalf("expected error 'Invalid input'; got %v", response["error"])
+	}
+}
+
+func TestDeleteUserNotFound(t *testing.T) {
+	defer gock.Off()
+
+	
+	gock.New("https://reqres.in").
+		Delete("/api/users/9999").
+		Reply(404).
+		JSON(map[string]interface{}{
+			"error": "user not found",
+		})
+
+	router := gin.Default()
+	router.DELETE("/users/:id", handler.Delete)
+
+	req, _ := http.NewRequest("DELETE", "/users/9999", nil)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected %v; got %v", http.StatusNotFound, rr.Code)
+	}
+	var response map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if response["error"] != "User not found" {
+		t.Fatalf("expected error 'User not found'; got %v", response["error"])
 	}
 }
