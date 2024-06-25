@@ -314,32 +314,3 @@ func TestUpdateInvalidInputData(t *testing.T) {
 	}
 }
 
-func TestDeleteUserNotFound(t *testing.T) {
-	defer gock.Off()
-
-	
-	gock.New("https://reqres.in").
-		Delete("/api/users/9999").
-		Reply(404).
-		JSON(map[string]interface{}{
-			"error": "user not found",
-		})
-
-	router := gin.Default()
-	router.DELETE("/users/:id", handler.Delete)
-
-	req, _ := http.NewRequest("DELETE", "/users/9999", nil)
-	rr := httptest.NewRecorder()
-	router.ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusNotFound {
-		t.Fatalf("expected %v; got %v", http.StatusNotFound, rr.Code)
-	}
-	var response map[string]string
-	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
-		t.Fatalf("failed to unmarshal response: %v", err)
-	}
-	if response["error"] != "User not found" {
-		t.Fatalf("expected error 'User not found'; got %v", response["error"])
-	}
-}

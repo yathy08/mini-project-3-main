@@ -142,31 +142,18 @@ func Update(c *gin.Context) {
 
 
 func Delete(c *gin.Context) {
-	userID := c.Param("id")
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
 
-	req, err := http.NewRequest(http.MethodDelete, "https://reqres.in/api/users/"+userID, nil)
+	url := apiURL + "/" + strconv.Itoa(id)
+	err = repository.DeleteUser(url)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send request"})
-		return
-	}
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send request"})
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-		return
-	}
-
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
 		return
 	}
 
-	c.Status(http.StatusNoContent) // Successfully deleted
+	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
 }
