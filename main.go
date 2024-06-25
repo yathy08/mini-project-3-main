@@ -8,6 +8,8 @@ import (
 	"github.com/yathy08/mini-project3/internal/handler"
 )
 
+// this comment is useless for testing ci cd
+
 func main() {
 	r := gin.Default()
 	r.GET("/users", handler.GetAll)
